@@ -1,4 +1,4 @@
-
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Machine
 (      
         Vname,
@@ -65,6 +65,15 @@ updateState st left (x:xs) -- need to ttake into account the bondary condrtition
         | (fst x == fst st) = left ++ [st] ++ xs 
         | otherwise = updateState st (x:left) xs
 
+findState :: String -> [State] -> Bool
+findState _ [] = False
+findState st (x:xs) -- need to ttake into account the bondary condrtitions
+        | fst x == st = True
+        | otherwise = findState st xs
+
+addState :: String -> Int -> [State] -> [State]--currying
+addState s n list = [(s,n)] ++ list  
+
 grabState :: String -> [State] -> Int--return the value of the state in the state array
 grabState _ [] = -1--change this m8
 grabState st (x:xs) -- need to ttake into account the bondary condrtitions
@@ -81,35 +90,30 @@ comparevalues stack
 --addState :: String -> [State] -> [State]
 --addState a b = a:b
         
-iexec :: Instr a -> Config -> Config --probably wrong 
-iexec (LOADI x) (a,b,c) = (a+1,b,push x [])    
+iexec :: Instr a -> Config -> Config --validate inputs implement "maybe"
+iexec (LOADI x) (a,b,c) = (a+1,b,push x c)    
 iexec (LOAD v)   (a,b,c) = (a+1,b,push (grabState v b ) c)--need to retrieve data from the array and place on to the stack do later
-iexec ADD  (a,b,c) = (a+1,b,add c)
-iexec (STORE v) (a,b,c) = (a+1,updateState (v,pop c) [] b,pop2 c)
+iexec  ADD      (a,b,c) = (a+1,b,add c)
+iexec (STORE v) (a,b,c) 
+                | (findState v b) == True = (a+1,updateState (v,pop c) [] b,pop2 c)
+                | otherwise = (a+1,addState v (pop c) b ,pop2 c)
 iexec (JMP i)  (a,b,c) = (a+i,b,c)
 iexec (JMPLESS i) (a,b,c)
-                | comparevalues c == True = (a+i,b,c)
+                | comparevalues c == True = (a+i+1,b,c)
                 | otherwise = (a,b,c)
  
 iexec (JMPGE i) (a,b,c) 
-                | comparevalues c == False = (a+i,b,c)
+                | comparevalues c == False = (a+i+1,b,c)
                 | otherwise = (a,b,c)
              
-                
---we need to find the length of the list each iteration
-length' :: (Num b) => [a] -> b 
-length' [] = 0 
-length' xs = sum [1 | _ <- xs] 
-                                                
-
+            
 --TODO Task 1.8
 exec :: [Instr a] -> Config -> Config--lists of instrsuctions 
 --exec [] _ = Config --this is either when the fucntion terminates so it has emptied its list constents and processed them or if the list of instructions is empty and the user provided a config (deal with validation later with maybe) 
 exec (x:xs) c = exec xs (iexec x c)
 exec [] c = c  
 
---exec _ 
---exec a b  = iexec head [x|x <- a]--yhink abotu this iteratively
+
 
 
 
