@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Machine
 (      
         Vname,
@@ -87,9 +86,6 @@ comparevalues stack
         | head (returntwo 1 stack) > last (returntwo 1 stack) = True --if y<x
         | otherwise = False -- if y >= x
 
---addState :: String -> [State] -> [State]
---addState a b = a:b
-        
 iexec :: Instr a -> Config -> Config --validate inputs implement "maybe"
 iexec (LOADI x) (a,b,c) = (a+1,b,push x c)    
 iexec (LOAD v)   (a,b,c) = (a+1,b,push (grabState v b ) c)--need to retrieve data from the array and place on to the stack do later
@@ -106,8 +102,8 @@ iexec (JMPGE i) (a,b,c)
                 | comparevalues c == False = (a+i+1,b,c)
                 | otherwise = (a,b,c)
              
---TODO Task 1.8
 exec :: [Instr a] -> Config -> Config--lists of instrsuctions 
 exec list (a,b,c)
         | length list <= a = (a,b,c)
         | otherwise = exec list (iexec (list !! a) (a,b,c))
+
