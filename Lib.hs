@@ -106,15 +106,8 @@ iexec (JMPGE i) (a,b,c)
                 | comparevalues c == False = (a+i+1,b,c)
                 | otherwise = (a,b,c)
              
-            
 --TODO Task 1.8
 exec :: [Instr a] -> Config -> Config--lists of instrsuctions 
---exec [] _ = Config --this is either when the fucntion terminates so it has emptied its list constents and processed them or if the list of instructions is empty and the user provided a config (deal with validation later with maybe) 
-exec (x:xs) c = exec xs (iexec x c)
-exec [] c = c  
-
-
-
-
-
-
+exec list (a,b,c)
+        | length list <= a = (a,b,c)
+        | otherwise = exec list (iexec (list !! a) (a,b,c))
