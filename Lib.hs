@@ -1,4 +1,6 @@
-module Machine
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+
+module Lib--change this later cba to do it now
 (      
         Vname,
         Val,
@@ -10,17 +12,16 @@ module Machine
         exec
 ) where
 
---import Data.Map
+import Data.Map
+import Data.Maybe
 
 type Vname = String
 
 type Val = Int 
 
-type State = (Vname,Val)-- maps variable names to values
---zip can pair two things into a tupule like variable and its value
+type State = Map Vname Val --modelled as : (map k a)
 
---TODO Task 1.4
-data Instr a = LOADI Int -- i think its like this
+data Instr = LOADI Int 
            | LOAD String 
            | ADD
            | STORE String
@@ -30,80 +31,100 @@ data Instr a = LOADI Int -- i think its like this
         --IUndefined (check wtf is thats shit)
         deriving (Eq, Read, Show)--check what this does 
 
-type Stack  = [Int]--staack can be a list that grow right from left 
+type Stack = [Int]
 
-type Pc = Int--for now i'll leave it like this
+type Pc = Int
 
-type Config = (Pc,[State],Stack)---chnage this later but this is the rougth idea
---program counter,(var name,var value),stack contents
+type Config = (Pc,State,Stack)
 
 push :: Int -> Stack -> Stack  -- we need to add a item to the stack from  the right hand side ?(check the convention with the guy)
 push value xs = value : xs  --adds value to start of list ye?
 
 pop :: Stack -> Int
+pop [] = -1 --means the stack is empty
 pop list = head list--add validation for if the list is empty ect
 
-pop2 :: Stack  -> Stack  --not a clean way of doing this
+pop2 :: Stack  -> Stack  --not a clean way of doing this ( maybe to let and in or : do)
 pop2 [] = []
 pop2 (x:xs) = xs
 
-returntwo :: Int -> Stack -> Stack --chnage those to stack types
+returntwo :: Int -> Stack -> Stack
 returntwo _ [] = []
 returntwo a (x:xs)
-        | a < 3 = [x] ++ returntwo (a + 1) xs  
-        | otherwise = [] 
+        | a < 3 = x : returntwo (a + 1) xs
+        | otherwise = []
 
-add :: [Int] -> [Int]
-add [] =[]
-add (x:xs) = sum (returntwo (1) (x:xs)) : (drop 1 xs)   
+add :: Stack -> Stack
+add [] = []
+add (x:xs) = sum (returntwo 1 (x:xs)) : Prelude.drop 1 xs   
 
---thing to find,left list,right list ,return full updated list
-updateState :: State -> [State] -> [State] -> [State]--original state array + one new state 
-updateState _ _ [] = []
-updateState st left (x:xs) -- need to ttake into account the bondary condrtitions
-        | (fst x == fst st) = left ++ [st] ++ xs 
-        | otherwise = updateState st (x:left) xs
 
-findState :: String -> [State] -> Bool
-findState _ [] = False
-findState st (x:xs) -- need to ttake into account the bondary condrtitions
-        | fst x == st = True
-        | otherwise = findState st xs
+findState :: String -> State -> Bool 
+findState st state 
+        | isJust(Data.Map.lookup st state) = False
+        | otherwise = True
 
-addState :: String -> Int -> [State] -> [State]--currying
-addState s n list = [(s,n)] ++ list  
-
-grabState :: String -> [State] -> Int--return the value of the state in the state array
-grabState _ [] = -1--change this m8
-grabState st (x:xs) -- need to ttake into account the bondary condrtitions
-        | fst x == st = snd x
-        | otherwise = grabState st xs
+grabState :: String -> State -> Maybe Int--return the value of the state in the state array
+grabState  = Data.Map.lookup
         
-
 comparevalues :: Stack  -> Bool
 comparevalues [] = False
 comparevalues stack
         | head (returntwo 1 stack) > last (returntwo 1 stack) = True --if y<x
         | otherwise = False -- if y >= x
 
-iexec :: Instr a -> Config -> Config --validate inputs implement "maybe"
-iexec (LOADI x) (a,b,c) = (a+1,b,push x c)    
-iexec (LOAD v)   (a,b,c) = (a+1,b,push (grabState v b ) c)--need to retrieve data from the array and place on to the stack do later
-iexec  ADD      (a,b,c) = (a+1,b,add c)
+iexec :: Instr -> Config -> Config --validate inputs implement "maybe" (rmeove the a argument somehow)
+iexec (LOADI x) (a,b,c) = (a+1,b,push x c)
+iexec (LOAD v)  (a,b,c) 
+                    | not(Data.Map.null b) = if  Data.Map.valid b then
+                                if isNothing(grabState v b) then
+                                    (a+1,b,c)
+                                else
+                                    let value = fromJust(grabState v b)
+                                    in (a+1,b,push value c)        
+                            else
+                            (a,b,c)   
+                    | otherwise = (a+1,b,c) -- mini validation,verify that the map is not empty
+                                            
+iexec  ADD   (a,b,c) 
+                | length c < 2 = (a+1,b,c)
+                | otherwise = (a+1,b,add c)--check if stack is non empty
+
 iexec (STORE v) (a,b,c) 
-                | (findState v b) == True = (a+1,updateState (v,pop c) [] b,pop2 c)
-                | otherwise = (a+1,addState v (pop c) b ,pop2 c)
-iexec (JMP i)  (a,b,c) = (a+i,b,c)
+                = if  Data.Map.valid b then
+                        if isNothing(grabState v b) then
+                           if Prelude.null c || pop c == -1  then      
+                                (a+1,b,c)
+                           else (a+1,insert v (pop c) b, pop2 c) -- insert :: Ord k => k -> a -> Map k a -> Map k a
+                        else
+                           if pop c == -1  then      
+                                (a+1,b,c)
+                                else
+                                        let f _ = Just(pop c)--fucntion that returns v
+                                        in (a+1,alter f v b,pop2 c)         
+                else
+                        (a+1,b,c)   
+
+iexec (JMP i)   (a,b,c) = (a+i+1,b,c) --for all jump condtion validate that a+i is within the bounds of list length (also not negative)
 iexec (JMPLESS i) (a,b,c)
-                | comparevalues c == True = (a+i+1,b,c)
-                | otherwise = (a,b,c)
+               | comparevalues c = (a+i+1,b,c)
+               | otherwise = (a+1,b,c)
  
 iexec (JMPGE i) (a,b,c) 
-                | comparevalues c == False = (a+i+1,b,c)
-                | otherwise = (a,b,c)
+              | not (comparevalues c) = (a+i+1,b,c)
+              | otherwise = (a,b,c)
              
-exec :: [Instr a] -> Config -> Config--lists of instrsuctions 
+exec :: [Instr] -> Config -> Config--lists of instrsuctions
+exec [] _ = (0,empty,[]) --DEAFULT RETRUN CONFIG FILE ,handle jmp instruction when its illegal values 
 exec list (a,b,c)
-        | length list <= a = (a,b,c)
+        | length list <= a = (a,b,c)--check if the pc has been incrememtned if not then halt and output the state that is atm
         | otherwise = exec list (iexec (list !! a) (a,b,c))
+
+--thoughts:
+--if there is somethign that the interpreter doesnt like it still carries on with execution by incremementing the pc
+--check exec function if it runs list of instructions properly again        
+
+
+
+
 
