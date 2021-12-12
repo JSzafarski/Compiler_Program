@@ -1,130 +1,170 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
-module Lib--change this later cba to do it now
-(      
-        Vname,
-        Val,
-        State,
-        Instr (..),
-        Stack,
-        Config,
-        iexec,
-        exec
+module Lib (
+        Com (..),
+        AExp (..),
+        BExp (..),
+        --Bc (..),
+        aval,
+        bval,
+        eval,
 ) where
 
 import Data.Map
 import Data.Maybe
+import Machine
+--re used pre define types and type sysnnyms from Machine.hs
+data Com  = Assign String AExp--x is the expression and (N a) is the variable v   
+            | Seq  Com Com  -- Denotes a program which first executes c1 and then c2 v
+            | If BExp Com Com --c1 id b is true ,c2 else
+            | While BExp Com -- Executes c as long as b evaluates to TRUE
+            | SKIP 
+            deriving (Eq, Read, Show)
 
-type Vname = String
+data AExp =   N Int
+            | V String
+            | Plus AExp AExp  -- where a and b are non-deterministic types
+            deriving (Eq, Read, Show)
 
-type Val = Int 
+--data BooleanConstants = TRUE
+                 --     | FALSE 
+               -- deriving (Eq, Read, Show)
 
-type State = Map Vname Val --modelled as : (map k a)
+data BExp =  Not BExp 
+            |And BExp BExp -- this might not be Bc  but BExp
+            |Less AExp AExp
+            |Bc Bool
+            deriving (Eq, Read, Show)   
 
-data Instr = LOADI Int 
-           | LOAD String 
-           | ADD
-           | STORE String
-           | JMP Int
-           | JMPLESS Int
-           | JMPGE Int
-        --IUndefined (check wtf is thats shit)
-        deriving (Eq, Read, Show)--check what this does 
+-- aval (Plus (N 3) (V "x")) (fromList [("x" ,0)])
 
-type Stack = [Int]
+aval :: AExp -> State -> Val
+aval (Plus a b) state = case a of  -- do the same here as this is non exaustive.
+                        (N c) -> case b of
+                                (V d) -> if isNothing(Machine.grabState d state) then -1 else
+                                         fromJust(Machine.grabState d state) + c
+                                (N d) -> c + d
+                                (Plus e f) -> c +  aval (Plus e f) state
+                        (V c) -> case b of
+                                (V d) -> if isNothing(Machine.grabState c state ) || isNothing(Machine.grabState d state)  then -1 else
+                                         fromJust(Machine.grabState c state) + fromJust(Machine.grabState d state)  
+                                (N d) -> if isNothing(Machine.grabState c state) then -1 else
+                                         fromJust(Machine.grabState c state) + d
+                                (Plus e f) -> fromJust(Machine.grabState c state) + aval (Plus e f) state
+                        (Plus e f) -> case b of
+                                (V g) -> if isNothing(Machine.grabState g state) then -1 else
+                                         fromJust(Machine.grabState g state) + aval (Plus e f ) state
+                                (N h) -> aval (Plus e f) state + h
+                                (Plus i j) -> aval (Plus e f) state  + aval (Plus i j) state              
+aval (N a) _ = a 
+aval (V a) state = fromMaybe (- 1) (Machine.grabState a state)  
+                         
+bval :: BExp -> State -> Bool
+bval (Less a b) state = let leftValue = case a of
+                                (N b) -> aval (N b) state
+                                (V c) -> aval (V c) state 
+                                (Plus d e) -> aval (Plus d e) state
+                        in
+                        case b of
+                                (N f) -> if leftValue < aval (N f) state then True else False
+                                (V g) -> if leftValue < aval (V g) state then True else False
+                                (Plus h i) -> if leftValue < aval (Plus h i) state then True else False
 
-type Pc = Int
-
-type Config = (Pc,State,Stack)
-
-push :: Int -> Stack -> Stack  -- we need to add a item to the stack from  the right hand side ?(check the convention with the guy)
-push value xs = value : xs  --adds value to start of list ye?
-
-pop :: Stack -> Int
-pop [] = -1 --means the stack is empty
-pop list = head list--add validation for if the list is empty ect
-
-pop2 :: Stack  -> Stack  --not a clean way of doing this ( maybe to let and in or : do)
-pop2 [] = []
-pop2 (x:xs) = xs
-
-returntwo :: Int -> Stack -> Stack
-returntwo _ [] = []
-returntwo a (x:xs)
-        | a < 3 = x : returntwo (a + 1) xs
-        | otherwise = []
-
-add :: Stack -> Stack
-add [] = []
-add (x:xs) = sum (returntwo 1 (x:xs)) : Prelude.drop 1 xs   
-
-
-findState :: String -> State -> Bool 
-findState st state 
-        | isJust(Data.Map.lookup st state) = False
-        | otherwise = True
-
-grabState :: String -> State -> Maybe Int--return the value of the state in the state array
-grabState  = Data.Map.lookup
+bval (And a b) state = let leftValue = case a of
+                                (Less c d) -> bval (Less c d) state
+                                (And e f) -> bval (And e f) state
+                                (Not g) -> bval (Not g) state
+                                (Bc h) -> bval (Bc h) state
+                       in
+                       case b of
+                                (Less i j) -> if bval (Less i j) state && leftValue then True else False
+                                (And k l) -> if bval (And k l) state && leftValue then True else False 
+                                (Not m) -> if bval (Not m) state && leftValue then True else False
+                                (Bc n) -> if bval (Bc n) state && leftValue then True else False                                     
         
-comparevalues :: Stack  -> Bool
-comparevalues [] = False
-comparevalues stack
-        | head (returntwo 1 stack) > last (returntwo 1 stack) = True --if y<x
-        | otherwise = False -- if y >= x
+bval (Not a) state = case a of
+                        (Less c d) -> bval (Less c d) state
+                        (And e f) -> bval (And e f) state
+                        (Not g) -> bval (Not g) state
+                        (Bc h) -> bval (Bc h) state
+                    
+eval :: Com -> State -> State
 
-iexec :: Instr -> Config -> Config --validate inputs implement "maybe" (rmeove the a argument somehow)
-iexec (LOADI x) (a,b,c) = (a+1,b,push x c)
-iexec (LOAD v)  (a,b,c) 
-                    | not(Data.Map.null b) = if  Data.Map.valid b then
-                                if isNothing(grabState v b) then
-                                    (a+1,b,c)
-                                else
-                                    let value = fromJust(grabState v b)
-                                    in (a+1,b,push value c)        
-                            else
-                            (a,b,c)   
-                    | otherwise = (a+1,b,c) -- mini validation,verify that the map is not empty
-                                            
-iexec  ADD   (a,b,c) 
-                | length c < 2 = (a+1,b,c)
-                | otherwise = (a+1,b,add c)--check if stack is non empty
-
-iexec (STORE v) (a,b,c) 
-                = if  Data.Map.valid b then
-                        if isNothing(grabState v b) then
-                           if Prelude.null c || pop c == -1  then      
-                                (a+1,b,c)
-                           else (a+1,insert v (pop c) b, pop2 c) -- insert :: Ord k => k -> a -> Map k a -> Map k a
-                        else
-                           if pop c == -1  then      
-                                (a+1,b,c)
-                                else
-                                        let f _ = Just(pop c)--fucntion that returns v
-                                        in (a+1,alter f v b,pop2 c)         
-                else
-                        (a+1,b,c)   
-
-iexec (JMP i)   (a,b,c) = (a+i+1,b,c) --for all jump condtion validate that a+i is within the bounds of list length (also not negative)
-iexec (JMPLESS i) (a,b,c)
-               | comparevalues c = (a+i+1,b,c)
-               | otherwise = (a+1,b,c)
+eval (Assign a b) state = case b of
+                             (N c) ->   if isNothing(Machine.grabState a state) then state --make it add a variable if it doesn't exist?
+                                        else let f _ = Just c
+                                             in alter f a state
+                             (V d) ->  if isNothing(Machine.grabState a state) then state --make it add a variable if it doesn't exist?
+                                       else let f _ = Machine.grabState d state
+                                            in alter f a state                    
+                             (Plus e g) -> let f _ = Just(aval (Plus e g) state)
+                                           in  alter f a state                   
+eval SKIP state = state                                   
  
-iexec (JMPGE i) (a,b,c) 
-              | not (comparevalues c) = (a+i+1,b,c)
-              | otherwise = (a,b,c)
-             
-exec :: [Instr] -> Config -> Config--lists of instrsuctions
-exec [] _ = (0,empty,[]) --DEAFULT RETRUN CONFIG FILE ,handle jmp instruction when its illegal values 
-exec list (a,b,c)
-        | length list <= a = (a,b,c)--check if the pc has been incrememtned if not then halt and output the state that is atm
-        | otherwise = exec list (iexec (list !! a) (a,b,c))
-
---thoughts:
---if there is somethign that the interpreter doesnt like it still carries on with execution by incremementing the pc
---check exec function if it runs list of instructions properly again        
-
-
-
-
+eval (Seq a b) stack =  let stack2 = case a of
+                                (Assign b (N c)) -> eval (Assign b (N c)) stack  
+                                (If d e f) -> eval (If d e f) stack
+                                (Seq g h) -> eval (Seq g h) stack  
+                                (While i j) -> eval (While i j) stack  
+                                SKIP -> eval SKIP stack  
+                        in
+                            case b of
+                                (Assign b (N c)) -> eval (Assign b (N c)) stack2  --passed for evaluaytion Rhs first
+                                (If d e f) -> eval (If d e f) stack2
+                                (Seq g h) -> eval (Seq g h) stack2  
+                                (While i j) -> eval (While i j) stack2         
+                                SKIP -> eval SKIP stack2  
+                  
+eval (If a b c) state =  case a of
+                        (Less e f) -> if bval (Less e f) state then case b of
+                                                                (Assign b (N c)) -> eval (Assign b (N c)) state  --passed for evaluaytion Rhs first
+                                                                (If d e f) -> eval (If d e f) state
+                                                                (Seq g h) -> eval (Seq g h) state  
+                                                                (While i j) -> eval (While i j) state         
+                                                                SKIP -> eval SKIP state
+                                                                else case c of
+                                                                (Assign b (N c)) -> eval (Assign b (N c)) state  --passed for evaluaytion Rhs first
+                                                                (If d e f) -> eval (If d e f) state
+                                                                (Seq g h) -> eval (Seq g h) state 
+                                                                (While i j) -> eval (While i j) state        
+                                                                SKIP -> eval SKIP state      
+                        (And g h) -> if bval (And g h) state then case b of
+                                                                (Assign b (N c)) -> eval (Assign b (N c)) state  --passed for evaluaytion Rhs first
+                                                                (If d e f) -> eval (If d e f) state
+                                                                (Seq g h) -> eval (Seq g h) state  
+                                                                (While i j) -> eval (While i j) state         
+                                                                SKIP -> eval SKIP state
+                                                                else case c of
+                                                                (Assign b (N c)) -> eval (Assign b (N c)) state  --passed for evaluaytion Rhs first
+                                                                (If d e f) -> eval (If d e f) state
+                                                                (Seq g h) -> eval (Seq g h) state 
+                                                                (While i j) -> eval (While i j) state         
+                                                                SKIP -> eval SKIP state     
+eval (While c d) state = case c of 
+                          --(Not b) -> if b == TRUE then eval (While c d) -- will never chnage
+                          (Less e f) -> if bval(Less e f) state then case d of
+                                                                (Assign g q) -> let state2 = eval (Assign g q) state
+                                                                                in  eval (While c d) state2  --passed for evaluaytion Rhs first
+                                                                (If i j k) -> let state2 = eval (If i j k) state 
+                                                                        in  eval (While c d) state2
+                                                                (Seq l m)  -> let state2 = eval (Seq l m) state
+                                                                        in  eval (While c d) state2
+                                                                (While o p) -> let state2 = eval (While o p) state
+                                                                        in eval (While c d) state2         
+                                                                SKIP -> let state2 = eval SKIP state --will never terminate
+                                                                        in eval (While c d) state2
+                                        else state 
+                          (And g h) ->  if bval(And g h) state then case d of
+                                        (Assign i q) -> let state2 = eval (Assign i q) state
+                                                            in  eval (While c d) state2  --passed for evaluaytion Rhs first
+                                        (If k l m) -> let state2 = eval (If k l m) state 
+                                                      in  eval (While c d) state2
+                                        (Seq n o)  -> let state2 = eval (Seq n o) state
+                                                      in  eval (While c d) state2
+                                        (While p q) -> let state2 = eval (While p q) state
+                                                       in eval (While c d) state2         
+                                        SKIP -> let state2 = eval SKIP state --will never terminate
+                                                in eval (While c d) state2
+                                        else state         
+ 
 
