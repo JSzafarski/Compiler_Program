@@ -121,7 +121,8 @@ iexec (JMPLESS i) (a,b,c)
 iexec (JMPGE i) (a,b,c) 
               | not (comparevalues c) = (a+i+1,b,c)
               | otherwise = (a,b,c)
-             
+
+--Jump instruction can contain negativ integer so you can go back in the program counter. (JMP (-8))
 exec :: [Instr] -> Config -> Config--lists of instrsuctions
 exec [] _ = (0,empty,[]) --DEAFULT RETRUN CONFIG FILE ,handle jmp instruction when its illegal values 
 exec list (a,b,c)
