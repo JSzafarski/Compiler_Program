@@ -7,14 +7,14 @@ module Compiler
 ) where
 
 import Machine
-import Lib
+import Interpreter
 
-acomp :: AExp -> [Instr] --MAKE SURE YOU ARE RETURNING THE LIST OF INSTRUCTIONS IN THE ORDER THAT THE EXAMINE WANT ME TO EVEN THO THEIS DOES NOT INFLUENECE RESULT
-acomp (Plus a b)  = case a of 
+acomp :: AExp -> [Instr] 
+acomp (Plus a b)  = case a of  -- checks all the possible cases the user may wish to enter 
                     (N c) -> case b of
                             (V d) -> [LOADI c, LOAD d,ADD]
                             (N e) -> [LOADI c, LOADI e,ADD]
-                            (Plus f g) -> [LOADI c] ++ acomp (Plus f g) ++ [ADD]
+                            (Plus f g) -> [LOADI c] ++ acomp (Plus f g) ++ [ADD] --recursive call if the arguments are nested more deeply
                     (V f) -> case b of
                             (V g) -> [LOAD f,LOAD g,ADD]
                             (N h) -> [LOAD f,LOADI h,ADD]
@@ -26,37 +26,49 @@ acomp (Plus a b)  = case a of
 acomp (N a) = [LOADI a] 
 acomp (V a) = [LOAD a]                            
 
-
--- > bcomp (And ( Bc False ) (Bc True)) True 3
--- >[ JMP 1 , JMP 3]
-
 bcomp :: BExp -> Bool -> Int -> [Instr]
 
-bcomp (Not a) b c = case a of 
-                         (Bc d) -> if not d /= b then [] else [JMP c]
-                        --(And e f) -> if  not (bcomp (And e f) b c ) /= b then [] else [JMP c]
-                         {- (Less g h) -> if b then 
-                                            if bcomp (Less g h) b c)!!3 == (JMPGE n)  then 
-                                                let (JMPGE jump) = (bcomp (Less g h) b c) !! 3  
-                                                in (drop 3 (bcomp (Less g h) b c)) ++ [JMPLESS jump]  
-                                            else  
-                                                let (JMPLESS jump) = (bcomp (Less g h) b c) !! 3  
-                                                in (drop 3 (bcomp (Less g h) b c)) ++ [JMPGE jump]
-                                        else 
-                                            if bcomp (Less g h) b c == [_,_,JMPGE n]  then 
-                                                let (JMPGE jump) = (bcomp (Less g h) b c) !! 3  
-                                                in (drop 3 (bcomp (Less g h) b c)) ++ [JMPLESS jump]  
-                                            else  
-                                                let (JMPLESS jump) = (bcomp (Less g h) b c) !! 3  
-                                                in (drop 3 (bcomp (Less g h) b c)) ++ [JMPGE jump]      
-                          (Not i) -> if b then
-                                        if (bcomp (Not i) b c) == [JMP c] then [] else [JMP c]
+bcomp (Not a) b c = case a of {- treats the third paramater as a way of fliping the states so if the bool "b" 
+                        was True the it flips it to false an re-evaluates the bolean axperession with the flipped boolean value. as that is the same as doing Not of that expression-}
+                         (Bc d) -> if not d /= b then [] else [JMP c] 
+                         (And e f) -> if b == True then
+                                        bcomp (And e f) (False) c 
+                                      else
+                                        bcomp (And e f) True c       
+                         (Less g h) -> if b == True then 
+                                        bcomp (Less g h) False c  
+                                       else
+                                        bcomp (Less g h) True c                      
+                         (Not i) -> if b ==True then
+                                        bcomp (Not i) False c
                                     else
-                                        if (bcomp (Not i) b c) == [JMP c] then [JMP c] else []
-  -}
---bcomp (And a b) c d = case a of
---bcomp (Less (V "x" ) (N 5)) True 3
---[LOAD "x" , LOADI 5 ,JMPLESS 3]
+                                        bcomp (Not i) True c
+
+bcomp (And a b) c d = case a of
+                                (Less e f) -> case b of
+                                                (Less g h) -> bcomp (Less e f) c (length (bcomp (Less g h) c d) + d) ++ bcomp (Less g h) c d  
+                                                (Bc l) -> if c then 
+                                                                if l then [JMP ((length (bcomp(Less e f) c d))+(d))] ++ bcomp(Less e f) c d else
+                                                                [JMP d] ++bcomp(Less e f) c d
+                                                            else
+                                                                if l then bcomp(Less e f) c d else
+                                                                    [JMP ((length (bcomp(Less e f) c d))+(d))] ++ bcomp(Less e f) c d
+                                (Bc i) -> case b of
+                                                (Less g h) -> if c then 
+                                                                if i then [JMP ((length (bcomp(Less g h) c d))+(d))] ++ bcomp(Less g h) c d else
+                                                                    [JMP d] ++ bcomp(Less g h) c d
+                                                            else
+                                                                if i then [JMP d] ++ bcomp(Less g h) c d else
+                                                                    [JMP ((length (bcomp(Less g h) c d))+(d))] ++ bcomp(Less g h) c d    
+                                                (Bc j) -> if c then if j then
+                                                                    if i then [JMP d] else [JMP 1,JMP d]
+                                                                else 
+                                                                    if i then [] else []
+                                                                else 
+                                                                if j then
+                                                                    if i then [] else [JMP d]
+                                                                else 
+                                                                    if i then [JMP d] else [JMP d] 
 
 bcomp (Less a b) c d = let left = case a of
                                             (N b) -> acomp (N b) 
@@ -87,7 +99,7 @@ ccomp (Seq a b)  = let left = case a of
                                 (Seq i j) -> ccomp  (Seq i j) 
                                 (While k l) -> ccomp (While k l) 
                                 SKIP -> ccomp SKIP  
-                    in case b of
+                    in case b of -- concats the first seq of instructions with the second set of instructions 
                                 (Assign d e) -> left ++ ccomp(Assign d e) 
                                 (If f g h) -> left ++ ccomp(If f g h) 
                                 (Seq i j) -> left ++ ccomp(Seq i j)   
@@ -110,12 +122,12 @@ ccomp (If a b c)  = let y = case b of
                                                                 
 ccomp (While c d)  = case d of
                         (Assign g q) -> let left = ccomp (Assign g q) 
-                                        in bcomp c False (length left)  ++left++  [JMP (-length left)]  
+                                        in bcomp c False (length left+1)  ++left++  [JMP ((-1) + (-(length left)) - length (bcomp c False (length left+1)))]  
                         (If i j k) -> let left = ccomp (If i j k) 
-                                        in  bcomp c False (length left)  ++ left++ [JMP (-length left)] 
+                                        in  bcomp c False (length left+1)  ++ left++ [JMP ((-1) + (-(length left)) - length (bcomp c False (length left+1)))]  
                         (Seq l m)  -> let left = ccomp (Seq l m) 
-                                        in  bcomp c False (length left) ++ left++ [JMP (-length left)] 
+                                        in  bcomp c False (length left+1) ++ left++ [JMP ((-1) + (-(length left)) - length (bcomp c False (length left+1)))]  
                         (While o p) -> let left = ccomp (While o p) 
-                                        in bcomp c False (length left)  ++ [JMP (-length left)]        
+                                        in bcomp c False (length left+1)  ++left++ [JMP ((-1) + (-(length left)) - length (bcomp c False (length left+1)))]        
                         SKIP -> let  left = ccomp SKIP 
-                                in bcomp c False (length left) ++left ++ [JMP (-length left)] 
+                                in bcomp c False (length left+1) ++left ++ [JMP ((-1) + (-(length left)) - length (bcomp c False (length left+1)))]  

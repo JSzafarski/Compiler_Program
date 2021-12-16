@@ -1,10 +1,9 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
-module Lib (
+module Interpreter (
         Com (..),
         AExp (..),
         BExp (..),
-        --Bc (..),
         aval,
         bval,
         eval,
@@ -13,7 +12,7 @@ module Lib (
 import Data.Map
 import Data.Maybe
 import Machine
---re used pre define types and type sysnnyms from Machine.hs (Vanem and Val I think)
+
 data Com  = Assign String AExp--x is the expression and (N a) is the variable v   
             | Seq  Com Com  -- Denotes a program which first executes c1 and then c2 v
             | If BExp Com Com --c1 id b is true ,c2 else
@@ -21,14 +20,10 @@ data Com  = Assign String AExp--x is the expression and (N a) is the variable v
             | SKIP 
             deriving (Eq, Read, Show)
 
-data AExp =   N Val --re-used from machine.hs
+data AExp =   N Val -- re-used from machine.hs
             | V Vname
             | Plus AExp AExp  -- where a and b are non-deterministic types
             deriving (Eq, Read, Show)
-
---data BooleanConstants = TRUE
-                 --     | FALSE 
-               -- deriving (Eq, Read, Show)
 
 data BExp =  Not BExp 
             |And BExp BExp -- this might not be Bc  but BExp
@@ -39,7 +34,7 @@ data BExp =  Not BExp
 -- aval (Plus (N 3) (V "x")) (fromList [("x" ,0)])
 
 aval :: AExp -> State -> Val
-aval (Plus a b) state = case a of  -- do the same here as this is non exaustive.
+aval (Plus a b) state = case a of  -- check the possible input combinations and if there are nested plus command the it uses recusion
                         (N c) -> case b of
                                 (V d) -> if isNothing(Machine.grabState d state) then -1 else
                                          fromJust(Machine.grabState d state) + c
@@ -60,7 +55,7 @@ aval (N a) _ = a
 aval (V a) state = fromMaybe (- 1) (Machine.grabState a state)  
                          
 bval :: BExp -> State -> Bool
-bval (Less a b) state = let leftValue = case a of
+bval (Less a b) state = let leftValue = case a of --checks the left value a and if the result of that is less then b then returns true and flase conversely 
                                 (N b) -> aval (N b) state
                                 (V c) -> aval (V c) state 
                                 (Plus d e) -> aval (Plus d e) state
@@ -70,7 +65,7 @@ bval (Less a b) state = let leftValue = case a of
                                 (V g) -> if leftValue < aval (V g) state then True else False
                                 (Plus h i) -> if leftValue < aval (Plus h i) state then True else False
 
-bval (And a b) state = let leftValue = case a of
+bval (And a b) state = let leftValue = case a of -- if both values of a and b are true then it retruns true otherwise false for any other case combnation
                                 (Less c d) -> bval (Less c d) state
                                 (And e f) -> bval (And e f) state
                                 (Not g) -> bval (Not g) state
@@ -83,7 +78,7 @@ bval (And a b) state = let leftValue = case a of
                                 (Bc n) -> if bval (Bc n) state && leftValue then True else False                                     
         
 bval (Not a) state = case a of
-                        (Less c d) -> not (bval (Less c d) state)
+                        (Less c d) -> not (bval (Less c d) state) -- uses haskells "not" to flip the inputs to opposite state 
                         (And e f) -> not(bval (And e f) state)
                         (Not g) -> not(bval (Not g) state)
                         (Bc h) -> not(bval (Bc h) state)
@@ -91,15 +86,15 @@ bval (Not a) state = case a of
 eval :: Com -> State -> State
 
 eval (Assign a b) state = case b of
-                             (N c) ->   if isNothing(Machine.grabState a state) then state 
-                                        else let f _ = Just c
-                                             in alter f a state
+                             (N c) ->   if isNothing(Machine.grabState a state) then state --check if the variable exists
+                                        else let f _ = Just c --creates a function to assign the mapping
+                                             in alter f a state --assigns the new value in the Map to a selected variable name
                              (V d) ->  if isNothing(Machine.grabState a state) then state 
                                        else let f _ = Machine.grabState d state
                                             in alter f a state                    
                              (Plus e g) -> let f _ = Just(aval (Plus e g) state)
                                            in  alter f a state                   
-eval SKIP state = state                                   
+eval SKIP state = state     --returns the same state as input as it does nothing                              
  
 eval (Seq a b) stack =  let stack2 = case a of
                                 (Assign b c ) -> eval (Assign b c ) stack   -- passes to the appropriate functions to evaluate the result
@@ -140,31 +135,18 @@ eval (If a b c) state =  case a of
                                                                 (Seq g h) -> eval (Seq g h) state 
                                                                 (While i j) -> eval (While i j) state         
                                                                 SKIP -> eval SKIP state     
-eval (While c d) state = {- case c of 
-                          --(Not b) -> if b == TRUE then eval (While c d) -- will never chnage
-                          (Less e f) -> -} if bval c state then case d of
-                                                                (Assign g q) -> let state2 = eval (Assign g q) state
-                                                                                in  eval (While c d) state2  --passed for evaluaytion Rhs first
-                                                                (If i j k) -> let state2 = eval (If i j k) state 
-                                                                        in  eval (While c d) state2
-                                                                (Seq l m)  -> let state2 = eval (Seq l m) state
-                                                                        in  eval (While c d) state2
-                                                                (While o p) -> let state2 = eval (While o p) state
-                                                                        in eval (While c d) state2         
-                                                                SKIP -> let state2 = eval SKIP state --will never terminate
-                                                                        in eval (While c d) state2
+eval (While c d) state = if bval c state then case d of
+                                        (Assign g q) -> let state2 = eval (Assign g q) state --checks the comman inside the while loop and evaluates it 
+                                                        in  eval (While c d) state2   -- evaluates the while command again with the state altered by thefirst command and it's passed recursively  
+                                        (If i j k) -> let state2 = eval (If i j k) state 
+                                                in  eval (While c d) state2
+                                        (Seq l m)  -> let state2 = eval (Seq l m) state
+                                                in  eval (While c d) state2
+                                        (While o p) -> let state2 = eval (While o p) state
+                                                in eval (While c d) state2         
+                                        SKIP -> state {- let state2 = eval SKIP state --will never terminate 
+                                                in eval (While c d) state2 -}
                                         else state 
-                          {- (And g h) ->  if bval(And g h) state then case d of
-                                        (Assign i q) -> let state2 = eval (Assign i q) state
-                                                            in  eval (While c d) state2  --passed for evaluaytion Rhs first
-                                        (If k l m) -> let state2 = eval (If k l m) state 
-                                                      in  eval (While c d) state2
-                                        (Seq n o)  -> let state2 = eval (Seq n o) state
-                                                      in  eval (While c d) state2
-                                        (While p q) -> let state2 = eval (While p q) state
-                                                       in eval (While c d) state2         
-                                        SKIP -> let state2 = eval SKIP state --will never terminate
-                                                in eval (While c d) state2
-                                        else state    -}      
+                              
  
 

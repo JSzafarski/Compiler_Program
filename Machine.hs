@@ -29,15 +29,14 @@ type Val = Int
 
 type State = Map Vname Val --modelled as : (map k a)
 
-data Instr = LOADI Int 
+data Instr = LOADI Int --the full instruction set 
            | LOAD String 
            | ADD
            | STORE String
            | JMP Int
            | JMPLESS Int
            | JMPGE Int
-        --IUndefined (check wtf is thats shit)
-        deriving (Eq, Read, Show)--check what this does 
+        deriving (Eq, Read, Show)
 
 type Stack = [Int]
 
@@ -45,24 +44,24 @@ type Pc = Int
 
 type Config = (Pc,State,Stack)
 
-push :: Int -> Stack -> Stack  -- we need to add a item to the stack from  the right hand side ?(check the convention with the guy)
-push value xs = value : xs  --adds value to start of list ye?
+push :: Int -> Stack -> Stack  
+push value xs = value : xs  --pushes items to the "top" of the stack
 
 pop :: Stack -> Int
 pop [] = -1 --means the stack is empty
-pop list = head list--add validation for if the list is empty ect
+pop list = head list
 
-pop2 :: Stack  -> Stack  --not a clean way of doing this ( maybe to let and in or : do)
+pop2 :: Stack  -> Stack  
 pop2 [] = []
-pop2 (x:xs) = xs
+pop2 (x:xs) = xs --returns the tail of the stack excluding the top item
 
-returntwo :: Int -> Stack -> Stack
+returntwo :: Int -> Stack -> Stack -- returns the first two item's from a stack
 returntwo _ [] = []
 returntwo a (x:xs)
         | a < 3 = x : returntwo (a + 1) xs
         | otherwise = []
 
-add :: Stack -> Stack
+add :: Stack -> Stack -- adds the frist two items in the stack and then returns the altered stack 
 add [] = []
 add (x:xs) = sum (returntwo 1 (x:xs)) : Prelude.drop 1 xs   
 
@@ -81,7 +80,7 @@ comparevalues stack
         | head (returntwo 1 stack) > last (returntwo 1 stack) = True --if y<x
         | otherwise = False -- if y >= x
 
-iexec :: Instr -> Config -> Config --validate inputs implement "maybe" (rmeove the a argument somehow)
+iexec :: Instr -> Config -> Config 
 iexec (LOADI x) (a,b,c) = (a+1,b,push x c)
 iexec (LOAD v)  (a,b,c) 
                     | not(Data.Map.null b) = if  Data.Map.valid b then
@@ -89,19 +88,19 @@ iexec (LOAD v)  (a,b,c)
                                     (a+1,b,c)
                                 else
                                     let value = fromJust(grabState v b)
-                                    in (a+1,b,push value c)        
+                                    in (a+1,b,push value c)      --places the value on the stack   
                             else
                             (a,b,c)   
-                    | otherwise = (a+1,b,c) -- mini validation,verify that the map is not empty
+                    | otherwise = (a+1,b,c)
                                             
 iexec  ADD   (a,b,c) 
                 | length c < 2 = (a+1,b,c)
-                | otherwise = (a+1,b,add c)--check if stack is non empty
+                | otherwise = (a+1,b,add c)
 
 iexec (STORE v) (a,b,c) 
                 = if  Data.Map.valid b then
                         if isNothing(grabState v b) then
-                           if Prelude.null c || pop c == -1  then      
+                           if Prelude.null c || pop c == -1  then      --checks if the stack is not empty so it can assign the top item to the specified variabel name (state)
                                 (a+1,b,c)
                            else (a+1,insert v (pop c) b, pop2 c) -- insert :: Ord k => k -> a -> Map k a -> Map k a
                         else
@@ -113,26 +112,21 @@ iexec (STORE v) (a,b,c)
                 else
                         (a+1,b,c)   
 
-iexec (JMP i)   (a,b,c) = (a+i+1,b,c) --for all jump condtion validate that a+i is within the bounds of list length (also not negative)
+iexec (JMP i)   (a,b,c) = (a+i+1,b,c) 
 iexec (JMPLESS i) (a,b,c)
-               | comparevalues c = (a+i+1,b,c)
-               | otherwise = (a+1,b,c)
+               | comparevalues c = (a+i+1,b,pop2(pop2 (c)))--checks if the condition is met
+               | otherwise = (a+1,b,pop2(pop2 (c)))
  
 iexec (JMPGE i) (a,b,c) 
-              | not (comparevalues c) = (a+i+1,b,c)
-              | otherwise = (a,b,c)
+              | not (comparevalues c) = (a+i+1,b,pop2(pop2 (c)))
+              | otherwise = (a,b,pop2(pop2 (c)))
 
---Jump instruction can contain negativ integer so you can go back in the program counter. (JMP (-8))
-exec :: [Instr] -> Config -> Config--lists of instrsuctions
-exec [] _ = (0,empty,[]) --DEAFULT RETRUN CONFIG FILE ,handle jmp instruction when its illegal values 
+exec :: [Instr] -> Config -> Config
+exec [] _ = (0,empty,[]) 
 exec list (a,b,c)
-        | length list <= a = (a,b,c)--check if the pc has been incrememtned if not then halt and output the state that is atm
-        | otherwise = exec list (iexec (list !! a) (a,b,c))
+        | length list <= a = (a,b,c) --check if the program counter exceeds the length of instructions
+        | otherwise = exec list (iexec (list !! a) (a,b,c)) --if not the the call is passed recursively to execute firther instructions in the list
 
---thoughts:
---if there is somethign that the interpreter doesnt like it still carries on with execution by incremementing the pc
---check exec function if it runs list of instructions properly again        
--- comment whats going on for 100% 
 
 
 
